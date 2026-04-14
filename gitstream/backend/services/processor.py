@@ -1,57 +1,32 @@
-"""
-processor.py
-------------
-Fetches TikTok video metadata and transcript/caption data using yt-dlp
-in --dump-json mode. No video bytes are written to disk — only JSON
-metadata and subtitle text, keeping us well within Vercel's 500 MB limit.
-"""
+
 
 from __future__ import annotations
 
+import base64
 import json
 import re
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 from backend.models import VideoMetadata
 
 
-# ---------------------------------------------------------------------------
-# Public API
-# ---------------------------------------------------------------------------
 
 def fetch_video_metadata(tiktok_url: str) -> VideoMetadata:
-    """
-    Given a TikTok URL, return structured metadata including the caption
-    text, description, and any auto-generated subtitles (transcript).
-
-    Strategy
-    --------
-    1.  Run `yt-dlp --dump-json` to get the full JSON info dict without
-        touching the video stream.
-    2.  Optionally run a second pass with `--write-auto-subs --skip-download`
-        into a temp directory to capture the VTT/SRT transcript, then read
-        and delete that file immediately. The total I/O never approaches
-        the Vercel 500 MB limit.
-
-    Raises
-    ------
-    ProcessorError   -- on yt-dlp failure or unexpected output.
-    ValueError       -- if the URL is not a recognisable TikTok URL.
-    """
+    
     _validate_tiktok_url(tiktok_url)
 
     raw_info = _dump_json(tiktok_url)
     transcript = _fetch_transcript(tiktok_url)
+    frames = _extract_frames(raw_info.get("url"), raw_info.get("duration", 0))
 
-    return _build_metadata(raw_info, transcript)
+    print(f"DEBUG: Found {len(frames)} frames. Transcript found: {bool(transcript)}")
+    return _build_metadata(raw_info, transcript, frames)
 
 
-# ---------------------------------------------------------------------------
-# Validation
-# ---------------------------------------------------------------------------
+
 
 _TIKTOK_PATTERN = re.compile(
     r"https?://(www\.|vm\.|vt\.)?tiktok\.com/", re.IGNORECASE
@@ -65,9 +40,7 @@ def _validate_tiktok_url(url: str) -> None:
         )
 
 
-# ---------------------------------------------------------------------------
-# yt-dlp helpers
-# ---------------------------------------------------------------------------
+
 
 import sys
 
@@ -75,9 +48,7 @@ _YTDLP_BASE_ARGS: list[str] = [
     sys.executable, "-m", "yt_dlp",
     "--no-warnings",
     "--quiet",
-    "--add-header", "User-Agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                    "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/124.0.0.0 Safari/537.36",
+    "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     "--no-playlist",
 ]
 
@@ -85,7 +56,7 @@ _YTDLP_TIMEOUT_SECONDS = 30
 
 
 def _run_ytdlp(args: list[str]) -> subprocess.CompletedProcess:
-    """Thin wrapper that enforces a hard timeout and captures output."""
+    
     try:
         result = subprocess.run(
             args,
@@ -106,11 +77,7 @@ def _run_ytdlp(args: list[str]) -> subprocess.CompletedProcess:
 
 
 def _dump_json(url: str) -> dict[str, Any]:
-    """
-    Run `yt-dlp --dump-json <url>` and parse the resulting JSON blob.
-    --dump-json prints the info dict to stdout and exits without
-    downloading any media.
-    """
+   
     args = [*_YTDLP_BASE_ARGS, "--dump-json", url]
     result = _run_ytdlp(args)
 
@@ -129,14 +96,7 @@ def _dump_json(url: str) -> dict[str, Any]:
 
 
 def _fetch_transcript(url: str) -> str:
-    """
-    Attempt to download auto-generated subtitles into a NamedTemporaryFile
-    directory, read the resulting .vtt file, strip the WebVTT markup, and
-    return clean plain text. Returns an empty string if no subtitles exist.
-
-    The temp directory is removed immediately after reading — zero persistent
-    disk usage on Vercel's ephemeral filesystem.
-    """
+    
     with tempfile.TemporaryDirectory() as tmpdir:
         subtitle_path_template = str(Path(tmpdir) / "subtitle")
 
@@ -161,9 +121,7 @@ def _fetch_transcript(url: str) -> str:
         return _strip_vtt_markup(raw_vtt)
 
 
-# ---------------------------------------------------------------------------
-# VTT -> plain text
-# ---------------------------------------------------------------------------
+
 
 _VTT_TIMESTAMP = re.compile(
     r"\d{2}:\d{2}:\d{2}\.\d{3}\s+-->\s+\d{2}:\d{2}:\d{2}\.\d{3}"
@@ -172,13 +130,7 @@ _VTT_TAG = re.compile(r"<[^>]+>")
 
 
 def _strip_vtt_markup(vtt: str) -> str:
-    """
-    Convert raw WebVTT content to clean, deduplicated plain text.
-
-    VTT files from TikTok typically repeat many cue blocks for the same
-    phrase. We dedup consecutive identical lines so Gemini gets a concise
-    transcript.
-    """
+    
     lines: list[str] = []
     for line in vtt.splitlines():
         line = line.strip()
@@ -196,11 +148,8 @@ def _strip_vtt_markup(vtt: str) -> str:
     return " ".join(lines)
 
 
-# ---------------------------------------------------------------------------
-# Model construction
-# ---------------------------------------------------------------------------
 
-def _build_metadata(info: dict[str, Any], transcript: str) -> VideoMetadata:
+def _build_metadata(info: dict[str, Any], transcript: str, frames: list[str]) -> VideoMetadata:
     return VideoMetadata(
         video_id=info.get("id", ""),
         title=info.get("title") or info.get("description", "")[:200],
@@ -214,12 +163,67 @@ def _build_metadata(info: dict[str, Any], transcript: str) -> VideoMetadata:
         thumbnail_url=info.get("thumbnail", ""),
         tags=info.get("tags") or [],
         transcript=transcript,
+        frames=frames,
     )
 
 
-# ---------------------------------------------------------------------------
-# Custom exception
-# ---------------------------------------------------------------------------
+def _extract_frames(stream_url: Optional[str], duration: int) -> list[str]:
+    
+    if not stream_url or duration < 2:
+        return []
+
+    print(f"Extracting frames from: {stream_url[:50]}...")
+
+    frame_data = []
+   
+    timestamps = [duration * 0.2, duration * 0.5, duration * 0.8]
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        
+        for i, ts in enumerate(timestamps):
+            out_path = Path(tmpdir) / f"frame_{i}.jpg"
+            cmd = [
+                "ffmpeg", "-ss", str(ts),
+                "-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_delay_max", "5",
+                "-i", stream_url,
+                "-frames:v", "1", "-q:v", "2", str(out_path),
+                "-y", "-hide_banner", "-loglevel", "error"
+            ]
+            try:
+                subprocess.run(cmd, capture_output=True, timeout=10)
+            except Exception:
+                pass
+
+            if out_path.exists():
+                with open(out_path, "rb") as f:
+                    frame_data.append(base64.b64encode(f.read()).decode("utf-8"))
+
+        
+        if not frame_data:
+            try:
+                import cv2
+                cap = cv2.VideoCapture(stream_url)
+                if cap.isOpened():
+                    fps = cap.get(cv2.CAP_PROP_FPS) or 30
+                    for i, ts in enumerate(timestamps):
+                        cap.set(cv2.CAP_PROP_POS_MSEC, ts * 1000)
+                        success, frame = cap.read()
+                        if success:
+                            out_path = Path(tmpdir) / f"cv_frame_{i}.jpg"
+                            cv2.imwrite(str(out_path), frame, [int(cv2.IMWRITE_JPEG_QUALITY), 90])
+                            if out_path.exists():
+                                with open(out_path, "rb") as f:
+                                    frame_data.append(base64.b64encode(f.read()).decode("utf-8"))
+                    cap.release()
+            except ImportError:
+                pass
+            except Exception:
+                pass
+
+    return frame_data
+
+
+
 
 class ProcessorError(RuntimeError):
     """Raised when yt-dlp fails or returns unexpected output."""

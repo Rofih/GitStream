@@ -17,6 +17,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from supabase import create_client, Client
 
+from postgrest.exceptions import APIError
 from backend.models import AnalyzeRequest, AnalyzeResponse, Repository
 from backend.services.processor import fetch_video_metadata, ProcessorError
 from backend.services.analyzer import extract_github_url, AnalyzerError
@@ -81,6 +82,7 @@ async def analyze(body: AnalyzeRequest) -> AnalyzeResponse:
             github_url=github_url,
             tiktok_url=body.tiktok_url,
             tiktok_author=video_meta.uploader,
+            frames=video_meta.frames,
         )
 
         # 4. Persist to Supabase (upsert so re-analysis refreshes the record)
@@ -107,5 +109,8 @@ async def analyze(body: AnalyzeRequest) -> AnalyzeResponse:
     except AnalyzerError as exc:
         print(f"DEBUG AnalyzerError: {exc}")
         raise HTTPException(status_code=422, detail=f"AI analysis failed: {exc}")
+    except APIError as exc:
+        print(f"DEBUG Supabase Error: {exc}")
+        raise HTTPException(status_code=502, detail=f"Database error: {exc.message}")
     except GitHubAPIError as exc:
         raise HTTPException(status_code=502, detail=f"GitHub API failed: {exc}")

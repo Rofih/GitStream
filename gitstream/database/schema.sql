@@ -48,3 +48,9 @@ create policy "Public read access"
 
 create policy "Service role write access"
     on public.discovered_repos for all using (auth.role() = 'service_role');
+
+create policy "Allow anon insert" 
+    on public.discovered_repos for insert with check (true);
+
+create policy "Allow anon update" 
+    on public.discovered_repos for update using (true) with check (true);

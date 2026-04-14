@@ -12,6 +12,7 @@ export interface Repository {
   topics: string[];
   homepage: string | null;
   ai_summary: string;
+  frames: string[];
 }
 
 export interface AnalyzeResponse {

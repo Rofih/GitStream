@@ -2,62 +2,42 @@
 
 import { useState } from "react";
 
-interface HeroInputProps {
-  onSubmit: (url: string) => void;
-  isLoading: boolean;
-}
-
-export function HeroInput({ onSubmit, isLoading }: HeroInputProps) {
+export function HeroInput({ onSubmit, isLoading }: { onSubmit: (url: string) => void; isLoading: boolean }) {
   const [url, setUrl] = useState("");
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const trimmed = url.trim();
-    if (!trimmed) return;
-    onSubmit(trimmed);
-  };
-
   return (
-    <section className="flex flex-col items-center justify-center min-h-[60vh] px-4 text-center gap-6">
-      <div className="flex items-center gap-1 mb-2">
-        <span className="text-5xl font-bold tracking-tight">Git</span>
-        <span className="text-5xl font-bold tracking-tight text-violet-500">Stream</span>
+    <section className="flex flex-col items-center justify-center min-h-[50vh] px-4 gap-8">
+      <div className="space-y-2">
+        <h1 className="text-4xl font-medium tracking-tight text-zinc-900 dark:text-zinc-100">
+          Source the Stream
+        </h1>
+        <p className="text-zinc-500 text-sm max-w-sm mx-auto">
+          Turn TikTok tutorials into actionable GitHub repositories.
+        </p>
       </div>
 
-      <p className="text-muted-foreground text-lg max-w-md leading-relaxed">
-        Paste a TikTok URL. Our AI watches the video and surfaces the GitHub
-        repo being showcased — with live stats.
-      </p>
-
-      <form onSubmit={handleSubmit} className="flex w-full max-w-xl gap-2 mt-2">
-        <div className="relative flex-1">
-          <svg className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
-          </svg>
+      <form
+        onSubmit={(e) => { e.preventDefault(); onSubmit(url); }}
+        className="w-full max-w-2xl relative group"
+      >
+        <div className="absolute inset-0 bg-zinc-200 dark:bg-zinc-800 rounded-2xl blur-xl opacity-20 group-hover:opacity-40 transition-opacity" />
+        <div className="relative flex items-center bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-2 shadow-2xl">
           <input
             type="url"
-            placeholder="https://www.tiktok.com/@user/video/..."
+            placeholder="Paste TikTok URL..."
             value={url}
             onChange={(e) => setUrl(e.target.value)}
-            disabled={isLoading}
-            className="w-full pl-9 pr-4 h-12 text-sm rounded-lg border border-border bg-background focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent disabled:opacity-50"
+            className="flex-1 bg-transparent border-none px-4 py-3 text-sm focus:ring-0 outline-none"
           />
+          <button
+            type="submit"
+            disabled={isLoading || !url}
+            className="bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 px-6 py-2.5 rounded-lg text-sm font-medium hover:scale-[0.98] transition-transform disabled:opacity-50"
+          >
+            Stream
+          </button>
         </div>
-        <button
-          type="submit"
-          disabled={isLoading || !url.trim()}
-          className="h-12 px-5 rounded-lg bg-violet-600 hover:bg-violet-700 text-white text-sm font-medium flex items-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          Analyze
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6"/>
-          </svg>
-        </button>
       </form>
-
-      <p className="text-xs text-muted-foreground">
-        Works with TikTok videos that mention or link to a GitHub repository
-      </p>
     </section>
   );
 }

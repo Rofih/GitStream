@@ -25,6 +25,7 @@ class VideoMetadata(BaseModel):
     thumbnail_url: str
     tags: list[str] = []
     transcript: str = ""
+    frames: list[str] = []
 
 
 class Repository(BaseModel):
@@ -43,6 +44,7 @@ class Repository(BaseModel):
     topics: list[str] = []
     homepage: Optional[str] = None
     ai_summary: str = ""
+    frames: list[str] = []
 
     @field_validator("github_url")
     @classmethod

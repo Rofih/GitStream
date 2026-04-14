@@ -9,12 +9,11 @@ topics — alongside the original video embed.
 ## How it works
 
 1. **You paste a TikTok URL** into the search bar.
-2. **yt-dlp fetches metadata & captions** from TikTok (no video download).
-3. **Google Gemini 1.5 Flash** reads the caption, description, and
-   transcript to identify the GitHub repo URL mentioned in the video.
-4. **GitHub REST API** returns live star count, language, forks, and topics.
-5. The result is cached in **Supabase** and rendered alongside the original
-   TikTok embed.
+2. **Video Metadata Extraction**: `yt-dlp` fetches the title, transcript, and streaming URL.
+3. **AI Vision (OCR)**: The system captures 3 frames from the video (at 20%, 50%, and 80%) using **FFmpeg** (with a Python **OpenCV** fallback).
+4. **Multimodal Analysis**: **Google Gemini 1.5 Flash** analyzes the text (captions/description) *and* the visual frames to pinpoint the GitHub repository showcased in the video.
+5. **Real-time Stats**: The GitHub REST API pulls live stars, forks, and language data.
+6. **Tile-based UI**: The result is displayed in a modern, bento-style layout featuring a "Visual Evidence" gallery showing what the AI saw.
 
 ## Tech Stack
 
@@ -22,9 +21,9 @@ topics — alongside the original video embed.
 |------------|---------------------------------------------------------|
 | Frontend   | Next.js 14, TypeScript, Tailwind CSS, shadcn/ui         |
 | Backend    | FastAPI (Python 3.11), deployed on Vercel               |
-| AI         | Google Gemini 1.5 Flash (multimodal)                    |
+| AI         | Google Gemini 1.5 Flash (Multimodal: Text + Vision)     |
 | Database   | Supabase (PostgreSQL + RLS)                             |
-| Video meta | yt-dlp (metadata + captions only, no video download)    |
+| Video meta | yt-dlp + FFmpeg/OpenCV (Frame extraction fallback)      |
 | GitHub     | GitHub REST API v3                                      |
 
 ## Local Setup
@@ -46,6 +45,10 @@ cd gitstream
 # Backend dependencies
 pip install -r requirements.txt
 
+# System dependency (Optional but recommended for speed)
+# On Windows: choco install ffmpeg
+# On Mac: brew install ffmpeg
+
 # Frontend dependencies
 cd frontend && pnpm install
 ```
@@ -59,8 +62,9 @@ cp .env.example .env
 
 ### 3. Bootstrap the database
 
-Open the **Supabase SQL editor** in your project dashboard and run the full
-contents of `database/schema.sql`.
+Open the **Supabase SQL editor** in your project dashboard and run:
+1. The full contents of `database/schema.sql`.
+2. The RLS policies found in the `README` (if not already in schema.sql) to allow `anon` insert/update for the backend.
 
 ### 4. Run locally
 

@@ -1,8 +1,4 @@
-"""
-github_api.py
--------------
-Fetches repository metadata from the GitHub REST API v3.
-"""
+
 
 from __future__ import annotations
 
@@ -15,32 +11,19 @@ import httpx
 from backend.models import Repository
 
 
-# ---------------------------------------------------------------------------
-# Constants
-# ---------------------------------------------------------------------------
 
 _GITHUB_API_BASE = "https://api.github.com"
 _TIMEOUT = 10
 
 
-# ---------------------------------------------------------------------------
-# Public API
-# ---------------------------------------------------------------------------
 
 def fetch_repo_data(
     github_url: str,
     tiktok_url: str,
     tiktok_author: str,
+    frames: list[str] = [],
 ) -> Repository:
-    """
-    Given a GitHub repo URL, fetch stars, forks, description, language,
-    topics, and homepage from the GitHub REST API.
-
-    Raises
-    ------
-    GitHubAPIError  -- on HTTP errors or unexpected response shapes.
-    ValueError      -- if github_url cannot be parsed into owner/repo.
-    """
+    
     owner, repo_name = _parse_owner_repo(github_url)
     raw = _call_github_api(f"/repos/{owner}/{repo_name}")
     ai_summary = _build_ai_summary(raw)
@@ -59,18 +42,13 @@ def fetch_repo_data(
         topics=raw.get("topics", []),
         homepage=raw.get("homepage") or None,
         ai_summary=ai_summary,
+        frames=frames,
     )
 
 
-# ---------------------------------------------------------------------------
-# GitHub REST helpers
-# ---------------------------------------------------------------------------
 
 def _call_github_api(path: str) -> dict:
-    """
-    Make an authenticated GET request to the GitHub REST API.
-    Uses GITHUB_TOKEN if available (5,000 req/hr vs 60 unauthenticated).
-    """
+    
     headers = {
         "Accept": "application/vnd.github+json",
         "X-GitHub-Api-Version": "2022-11-28",
@@ -107,9 +85,6 @@ def _call_github_api(path: str) -> dict:
     return response.json()
 
 
-# ---------------------------------------------------------------------------
-# URL parsing
-# ---------------------------------------------------------------------------
 
 _GITHUB_REPO_RE = re.compile(
     r"https?://github\.com/([\w.\-]+)/([\w.\-]+)"
@@ -123,9 +98,6 @@ def _parse_owner_repo(github_url: str) -> tuple[str, str]:
     return match.group(1), match.group(2).removesuffix(".git")
 
 
-# ---------------------------------------------------------------------------
-# Summary builder
-# ---------------------------------------------------------------------------
 
 def _build_ai_summary(raw: dict) -> str:
     parts: list[str] = []
@@ -160,9 +132,6 @@ def _build_ai_summary(raw: dict) -> str:
     return " | ".join(parts)
 
 
-# ---------------------------------------------------------------------------
-# Custom exception
-# ---------------------------------------------------------------------------
 
 class GitHubAPIError(RuntimeError):
     """Raised on GitHub REST API failures."""

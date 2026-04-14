@@ -1,9 +1,3 @@
-"""
-analyzer.py
------------
-Sends TikTok video metadata + transcript to Google Gemini 1.5 Flash
-to extract the GitHub repository URL mentioned in the video.
-"""
 
 from __future__ import annotations
 
@@ -47,8 +41,13 @@ def extract_github_url(meta: VideoMetadata) -> str:
     prompt = _build_prompt(meta)
     model = _get_client()
 
+    # Prepare multi-modal content: prompt string + Base64 image parts
+    contents = [prompt]
+    for frame_b64 in meta.frames:
+        contents.append({"mime_type": "image/jpeg", "data": frame_b64})
+
     try:
-        response = model.generate_content(prompt)
+        response = model.generate_content(contents)
         raw_text = response.text.strip()
     except Exception as exc:
         raise AnalyzerError(f"Gemini API call failed: {exc}") from exc
@@ -68,33 +67,28 @@ def _build_prompt(meta: VideoMetadata) -> str:
     )
 
     return textwrap.dedent(f"""
-        You are a precise data-extraction assistant. Your only job is to find
-        a GitHub repository URL in the text below.
-
-        VIDEO METADATA
-        --------------
-        Title / Caption : {meta.title}
-        Creator         : {meta.uploader} ({meta.uploader_handle})
-        Tags            : {', '.join(meta.tags[:20])}
-        Description     : {meta.description[:1000]}
-
-        {transcript_section}
+        You are a precise data-extraction assistant. 
+        I have provided text metadata and up to 3 screenshots from a TikTok video.
 
         TASK
         ----
-        1. Locate the GitHub repository URL mentioned or implied in the text above.
-           It may appear as:
-             - A full URL: https://github.com/owner/repo
-             - A short reference: "github.com/owner/repo"
-             - A spoken reference transcribed as: "github dot com slash owner slash repo"
+        1. Look at the SCREENSHOTS provided. Check for:
+           - GitHub URLs in the browser address bar.
+           - Repository names in the page header (e.g., "owner / repo").
+           - Code or terminal outputs that mention a library name.
+        
+        2. Read the TRANSCRIPT and METADATA:
+           {transcript_section}
+        
+        3. Cross-reference: If the transcript mentions a tool and the image shows a matching GitHub page, extract that URL.
 
-        2. Return ONLY the canonical URL in this exact format:
-               https://github.com/owner/repo
-           Do NOT include sub-paths like /blob/main/README.md -- strip to owner/repo.
-           Do NOT include any explanation, punctuation, or extra text.
+        Return ONLY the canonical URL in this exact format:
+            https://github.com/owner/repo
+        Do NOT include sub-paths like /blob/main/README.md -- strip to owner/repo.
+        Do NOT include any explanation, punctuation, or extra text.
 
-        3. If no GitHub repository can be identified with confidence, return exactly:
-               NOT_FOUND
+        If no GitHub repository can be identified with confidence, return exactly:
+            NOT_FOUND
 
         Your response:
     """).strip()
